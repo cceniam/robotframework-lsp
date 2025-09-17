@@ -3,6 +3,7 @@ import * as vscode from "vscode";
 import { debounce } from "../common";
 import { isFile, uriExists } from "../files";
 import { globalOutputViewState } from "./outViewRunIntegration";
+import { defaultVSCodeAdapter } from "./vscodeFileAdapter";
 
 interface IContents {
     isPlaceholder: boolean;
@@ -184,36 +185,18 @@ export class RobotOutputViewProvider implements vscode.WebviewViewProvider {
     }
 
     private async onUpdatedEditorSelection(token: vscode.CancellationToken): Promise<IContents> {
-        const editor = vscode.window.activeTextEditor;
-        if (!editor) {
-            return;
-        }
-
-        if (token.isCancellationRequested) {
-            return;
-        }
-
-        const filePath = editor.document.uri.fsPath;
-        if (!filePath.endsWith(".xml") && !filePath.endsWith(".rfstream")) {
-            return;
-        }
-        const currDoc = editor.document;
-
-        let text = currDoc.getText();
-        if (filePath.endsWith(".xml")) {
-            // We need to convert it to the rfstream format first.
-            const converted: string = await vscode.commands.executeCommand("robot.convertOutputXMLToRobostream", {
-                "xml_contents": text,
-            });
-            if (token.isCancellationRequested) {
+        try {
+            const processedFile = await defaultVSCodeAdapter.processActiveEditorDocument(token);
+            
+            if (!processedFile) {
                 return;
             }
-            if (!converted) {
-                return;
-            }
-            text = converted;
+
+            await globalOutputViewState.addRun(processedFile.filePath, processedFile.filePath, processedFile.content);
+        } catch (error) {
+            // Log error but don't throw to maintain existing behavior
+            console.error("Error processing file in output view:", error);
         }
-        await globalOutputViewState.addRun(filePath, filePath, text);
     }
 }
 
